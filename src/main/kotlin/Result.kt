@@ -1,85 +1,102 @@
 package com.mantono.result
 
 /**
- * A Result models one of three different possible outcomes for an operation
+ * A Result models one of two different possible outcomes for an operation
  * where a functions operates on an input of type [T] and returns an output
  * of type [S].
  *
- * 1. The operation was successful and an output of type [S] was returned
- * 2. The operation was successful in such way that it did not encounter any
- * errors, but it could still not return an output of the requested type. This
- * could be a scenario for example where a request to look up a user in a
- * database, only to find that it did not exist. It is likely that such outcome
- * should not be regarded as an error, while still not returning a value.
- * 3. An error was encountered, which may or may not have been caused by an
- * exception.
+ * 1. The operation was successful ([Success]) and an output of type [S] was returned
+ * 2. An error ([Failure]) was encountered, which may or may not have been caused by an
+ * exception, where either
+ * 2a. The error is of such nature that it is permanent ([Failure.Permanent]),
+ * in other words, given the same execution context
+ * and data the same result is always to be
+ * expected, and any further attempts would be futile. Such error could be
+ * a serialization error or division by zero.
+ * 2b. The cause of the error is of transient ([Failure.Transient]) nature.
+ * Example of causes of
+ * such error could be a temporary network failure, a remote API being
+ * unresponsive or some other resource being temporarily unavailable. A new
+ * attempt in the future is likely to yield a different outcome.
  */
 sealed class Result<T> {
-	inline fun <S> onSuccess(operation: (T) -> Result<S>): Result<S> {
-		return when(this) {
-			is Failure -> Failure(this)
-			is Halt -> Halt(this.message)
-			is Success -> try {
-				operation(this.value)
-			} catch(e: Throwable) {
-				Failure.fromException<S>(e)
-			}
-		}
-	}
+    inline fun <S> onSuccess(operation: (T) -> Result<S>): Result<S> {
+        return when(this) {
+            is Failure.Permanent -> Failure.Permanent(this)
+            is Failure.Transient -> Failure.Transient(this)
+            is Success -> try {
+                operation(this.value)
+            } catch(e: Throwable) {
+                Failure.fromException<S>(e)
+            }
+        }
+    }
 
-	fun get(): T? = when(this) {
-		is Success -> this.value
-		is Halt -> null
-		is Failure -> throw ResultException(this)
-	}
+    fun get(): T = when(this) {
+        is Success -> this.value
+        is Failure -> throw ResultException(this)
+    }
 
-	inline operator fun <S> invoke(operation: (T) -> Result<S>): Result<S> = onSuccess(operation)
+    inline operator fun <S> invoke(operation: (T) -> Result<S>): Result<S> = onSuccess(operation)
 
-	companion object {
-		inline operator fun <S> invoke(operation: () -> Result<S>): Result<S> {
-			return try {
-				operation()
-			} catch(e: Throwable) {
-				return Failure.fromException(e)
-			}
-		}
-	}
+    companion object {
+        inline operator fun <S> invoke(operation: () -> Result<S>): Result<S> {
+            return try {
+                operation()
+            } catch(e: Throwable) {
+                return Failure.fromException(e)
+            }
+        }
+    }
 }
 
 data class Success<T>(val value: T): Result<T>() {
-	companion object {
-		operator fun invoke(): Success<Unit> = Success(Unit)
-	}
+    companion object {
+        operator fun invoke(): Success<Unit> = Success(Unit)
+    }
 
-	override fun toString(): String = "Success [$value]"
+    override fun toString(): String = "Success [$value]"
 }
 
-data class Halt<T>(val message: String): Result<T>() {
-	override fun toString(): String = "Halt: $message"
-}
+sealed class Failure<T>: Result<T>() {
+    abstract val message: String
+    abstract val exception: Throwable?
+    abstract val metadata: Map<String, Any>
 
+    data class Permanent<T>(
+        override val message: String,
+        override val exception: Throwable? = null,
+        override val metadata: Map<String, Any> = emptyMap()
+    ): Failure<T>() {
+        constructor(failure: Failure.Permanent<*>):
+            this(failure.message, failure.exception, failure.metadata)
+    }
 
-data class Failure<T>(
-	val message: String,
-	val exception: Throwable? = null,
-	val metadata: Map<String, Any> = emptyMap()
-): Result<T>() {
+    data class Transient<T>(
+        override val message: String,
+        override val exception: Throwable? = null,
+        override val metadata: Map<String, Any> = emptyMap()
+    ): Failure<T>() {
 
-	constructor(failure: Failure<*>):
-		this(failure.message, failure.exception)
+        constructor(failure: Failure.Transient<*>):
+            this(failure.message, failure.exception, failure.metadata)
+    }
 
-	override fun toString(): String = "Failure: ${exception?.message ?: message}"
+    companion object {
+        fun <T> fromException(exception: Throwable): Failure<T> =
+            Failure.Transient(exception.message ?: exception.toString(), exception)
 
-	companion object {
-		fun <T> fromException(exception: Throwable): Failure<T> =
-			Failure(exception.message ?: exception.toString(), exception)
-	}
+        operator fun <T> invoke(failure: Failure<*>): Failure<T> = when(failure) {
+            is Failure.Permanent -> Failure.Permanent(failure)
+            is Failure.Transient -> Failure.Transient(failure)
+        }
+    }
 }
 
 class ResultException private constructor(
-	override val message: String,
-	override val cause: Throwable?
+    override val message: String,
+    override val cause: Throwable?
 ): Exception(message, cause) {
-	internal constructor(result: Failure<*>): this(result.message, result.exception)
-	internal constructor(error: String): this(error, null)
+    internal constructor(result: Failure<*>): this(result.message, result.exception)
+    internal constructor(error: String): this(error, null)
 }
