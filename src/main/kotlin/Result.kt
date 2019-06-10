@@ -68,7 +68,7 @@ sealed class Failure<T>: Result<T>() {
         override val exception: Throwable? = null,
         override val metadata: Map<String, Any> = emptyMap()
     ): Failure<T>() {
-        constructor(failure: Failure.Permanent<*>):
+        constructor(failure: Permanent<*>):
             this(failure.message, failure.exception, failure.metadata)
     }
 
@@ -78,17 +78,17 @@ sealed class Failure<T>: Result<T>() {
         override val metadata: Map<String, Any> = emptyMap()
     ): Failure<T>() {
 
-        constructor(failure: Failure.Transient<*>):
+        constructor(failure: Transient<*>):
             this(failure.message, failure.exception, failure.metadata)
     }
 
     companion object {
         fun <T> fromException(exception: Throwable): Failure<T> =
-            Failure.Transient(exception.message ?: exception.toString(), exception)
+            Transient(exception.message ?: exception.toString(), exception)
 
         operator fun <T> invoke(failure: Failure<*>): Failure<T> = when(failure) {
-            is Failure.Permanent -> Failure.Permanent(failure)
-            is Failure.Transient -> Failure.Transient(failure)
+            is Permanent -> Permanent(failure)
+            is Transient -> Transient(failure)
         }
     }
 }
@@ -99,4 +99,3 @@ class ResultException private constructor(
 ): Exception(message, cause) {
     internal constructor(result: Failure<*>): this(result.message, result.exception)
     internal constructor(error: String): this(error, null)
-}
