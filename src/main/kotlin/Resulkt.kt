@@ -11,26 +11,34 @@ package com.mantono.result
  * cause.
  */
 sealed class Result<T> {
-	inline fun <S> tryThen(operation: (T) -> S): Result<S> {
-		return when(this) {
-			is Failure.Permanent -> Failure.Permanent(this)
-			is Failure.Transient -> Failure.Transient(this)
-			is Success -> try {
-				Success(operation(this.value))
-			} catch(e: Throwable) {
-				Failure.Permanent<S>(e.message ?: "Operation failed", e)
-			}
-		}
-	}
-
 	inline fun <S> then(operation: (T) -> S): Result<S> {
 		return when(this) {
 			is Failure.Permanent -> Failure.Permanent(this)
 			is Failure.Transient -> Failure.Transient(this)
 			is Success -> try {
 				Success(operation(this.value))
-			} catch(e: Throwable) {
-				Failure.fromException<S>(e)
+			} catch(exception: Throwable) {
+				when(exception) {
+					is PermanentError -> Failure.Permanent<S>(exception.message, exception, exception.metadata)
+					is TransientError -> Failure.Transient<S>(exception.message, exception, exception.metadata)
+					else -> Failure.Permanent<S>(exception.message ?: "Operation failed", exception)
+				}
+			}
+		}
+	}
+
+	inline fun <S> attempt(operation: (T) -> S): Result<S> {
+		return when(this) {
+			is Failure.Permanent -> Failure.Permanent(this)
+			is Failure.Transient -> Failure.Transient(this)
+			is Success -> try {
+				Success(operation(this.value))
+			} catch(exception: Throwable) {
+				when(exception) {
+					is PermanentError -> Failure.Permanent<S>(exception.message, exception, exception.metadata)
+					is TransientError -> Failure.Transient<S>(exception.message, exception, exception.metadata)
+					else -> Failure.Transient<S>(exception.message ?: "Operation failed", exception)
+				}
 			}
 		}
 	}
@@ -41,7 +49,7 @@ sealed class Result<T> {
 	}
 }
 
-inline fun <S> tryExecute(operation: () -> S): Result<S> {
+inline fun <S> execute(operation: () -> S): Result<S> {
 	return try {
 		Success(operation())
 	} catch(e: Throwable) {
@@ -49,7 +57,7 @@ inline fun <S> tryExecute(operation: () -> S): Result<S> {
 	}
 }
 
-inline fun <S> execute(operation: () -> S): Result<S> {
+inline fun <S> attempt(operation: () -> S): Result<S> {
 	return try {
 		Success(operation())
 	} catch(e: Throwable) {
@@ -111,38 +119,43 @@ class ResultException private constructor(
 	internal constructor(error: String): this(error, null)
 }
 
-internal class PermanentException(
-	override val message: String,
-	override val cause: Throwable? = null,
-	override val metadata: Map<String, Any> = emptyMap()
-): Throwable(), TraceableError {
+/**
+ * An error of non-transient (permanent) nature. Retrying an operation with the
+ * same input that yielded the error should **always** give the same
+ * result.
+ */
+interface PermanentError: TraceableError
 
-}
-
+/**
+ * An error of transient nature. Retrying an operation with the
+ * same input that yielded the error could result in a different outcome in
+ * the future.
+ */
+interface TransientError: TraceableError
 
 fun failure(
 	message: String,
 	cause: Throwable? = null,
-	metadata: Map<String, Any?> = emptyMap()
+	metadata: Map<String, Any> = emptyMap()
 ): Nothing {
-	val failure = Failure.Permanent(message)
-	val exception: Throwable = if(cause is TraceableError) {
-		ResultException(message, cause, cause.metadata + metadata)
-	} else {
-		PermanentException(message, cause, metadata)
+	throw object: PermanentError, TraceableError, Throwable() {
+		override val message: String = message
+		override val cause: Throwable? = cause
+		override val metadata: Map<String, Any> = inheritMetadata(cause, metadata)
 	}
-	throw exception
 }
 
 fun panic(
 	message: String,
 	cause: Throwable? = null,
-	metadata: Map<String, Any?> = emptyMap()
+	metadata: Map<String, Any> = emptyMap()
 ): Nothing {
-	val exception: Throwable = if(cause is TraceableError) {
-		TransientException(message, cause, cause.metadata + metadata)
-	} else {
-		TransientException(message, cause, metadata)
+	throw object: TransientError, TraceableError, Throwable() {
+		override val message: String = message
+		override val cause: Throwable? = cause
+		override val metadata: Map<String, Any> = inheritMetadata(cause, metadata)
 	}
-	throw exception
 }
+
+private inline fun <reified T> inheritMetadata(obj: T?, metadata: Map<String, Any>): Map<String, Any> =
+	if(obj is TraceableError) obj.metadata + metadata else metadata
