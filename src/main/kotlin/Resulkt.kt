@@ -1,6 +1,5 @@
 package com.mantono.result
 
-
 /**
  * A Result models one of two different possible outcomes for an operation
  * where a functions operates on an input of type [T] and returns an output
@@ -19,8 +18,8 @@ sealed class Result<T> {
 				Success(operation(this.value))
 			} catch(exception: Throwable) {
 				when(exception) {
-					is PermanentError -> Failure.Permanent<S>(exception.message, exception, exception.metadata)
-					is TransientError -> Failure.Transient<S>(exception.message, exception, exception.metadata)
+					is PermanentError -> Failure.Permanent<S>(exception.message, exception.cause, exception.metadata)
+					is TransientError -> Failure.Transient<S>(exception.message, exception.cause, exception.metadata)
 					else -> Failure.Permanent<S>(exception.message ?: "Operation failed", exception)
 				}
 			}
@@ -35,8 +34,8 @@ sealed class Result<T> {
 				Success(operation(this.value))
 			} catch(exception: Throwable) {
 				when(exception) {
-					is PermanentError -> Failure.Permanent<S>(exception.message, exception, exception.metadata)
-					is TransientError -> Failure.Transient<S>(exception.message, exception, exception.metadata)
+					is PermanentError -> Failure.Permanent<S>(exception.message, exception.cause, exception.metadata)
+					is TransientError -> Failure.Transient<S>(exception.message, exception.cause, exception.metadata)
 					else -> Failure.Transient<S>(exception.message ?: "Operation failed", exception)
 				}
 			}
