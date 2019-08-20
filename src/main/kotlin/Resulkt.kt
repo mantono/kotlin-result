@@ -46,6 +46,12 @@ sealed class Result<T> {
 		is Success -> this.value
 		is Failure -> throw ResultException(this)
 	}
+
+	override fun toString(): String = when(this) {
+		is Success<T> -> "Success: $value"
+		is Failure.Transient<*> -> "Failure.Transient: $message"
+		is Failure.Permanent<*> -> "Failure.Permanent: $message"
+	}
 }
 
 inline fun <S> execute(operation: () -> S): Result<S> {
