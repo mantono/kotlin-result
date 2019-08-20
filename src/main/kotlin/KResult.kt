@@ -1,7 +1,7 @@
 package com.mantono.result
 
 /**
- * A Result models one of two different possible outcomes for an operation
+ * A KResult models one of two different possible outcomes for an operation
  * where a functions operates on an input of type [T] and returns an output
  * of type [S].
  *
@@ -9,8 +9,8 @@ package com.mantono.result
  * 2. An error was encountered, which may or may not have been caused by an
  * cause.
  */
-sealed class Result<T> {
-	inline fun <S> then(operation: (T) -> S): Result<S> {
+sealed class KResult<T> {
+	inline fun <S> then(operation: (T) -> S): KResult<S> {
 		return when(this) {
 			is Failure.Permanent -> Failure.Permanent(this)
 			is Failure.Transient -> Failure.Transient(this)
@@ -26,7 +26,7 @@ sealed class Result<T> {
 		}
 	}
 
-	inline fun <S> attempt(operation: (T) -> S): Result<S> {
+	inline fun <S> attempt(operation: (T) -> S): KResult<S> {
 		return when(this) {
 			is Failure.Permanent -> Failure.Permanent(this)
 			is Failure.Transient -> Failure.Transient(this)
@@ -54,7 +54,7 @@ sealed class Result<T> {
 	}
 }
 
-inline fun <S> execute(operation: () -> S): Result<S> {
+inline fun <S> execute(operation: () -> S): KResult<S> {
 	return try {
 		Success(operation())
 	} catch(e: Throwable) {
@@ -62,7 +62,7 @@ inline fun <S> execute(operation: () -> S): Result<S> {
 	}
 }
 
-inline fun <S> attempt(operation: () -> S): Result<S> {
+inline fun <S> attempt(operation: () -> S): KResult<S> {
 	return try {
 		Success(operation())
 	} catch(e: Throwable) {
@@ -70,7 +70,7 @@ inline fun <S> attempt(operation: () -> S): Result<S> {
 	}
 }
 
-data class Success<T>(val value: T): Result<T>() {
+data class Success<T>(val value: T): KResult<T>() {
 	companion object {
 		operator fun invoke(): Success<Unit> = Success(Unit)
 	}
@@ -84,7 +84,7 @@ interface TraceableError {
 	val metadata: Map<String, Any>
 }
 
-sealed class Failure<T>: Result<T>(), TraceableError {
+sealed class Failure<T>: KResult<T>(), TraceableError {
 	data class Permanent<T>(
 		override val message: String,
 		override val cause: Throwable? = null,
